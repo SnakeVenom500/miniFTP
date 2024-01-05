@@ -1,3 +1,10 @@
+/**
+ * Joey Pandina
+ * Systems Programming (CS 360) Final Project, Fall 2023
+ *
+ * This source code is an implementation of a server that accepts connections and communicates with clients.
+ */
+
 #include "myftp.h"
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -13,11 +20,18 @@
 #include <string.h>
 #include <stdlib.h>
 
-#define BACKLOG 4
-#define MY_PORT_NUMBER 49992
-#define BUF_SIZE (PATH_MAX + 6)
+#define BACKLOG 4 //How many client connections are allowed at once
+#define MY_PORT_NUMBER 49992 //The port number that the clients will connect to
+#define BUF_SIZE (PATH_MAX + 6) //A general buffer size for input from clients, and other general uses.
 
+/**
+ * The main function:
+ * 1. Establishes a socket called 'listenfd' to listen for client connections.
+ * 2. Runs a loop that continuously is listening for client connections.
+ * 3. After a client connects, it forks a child process for that client and reads input from the client.
+ */
 int main() {
+    //Establish the 'listenfd' socket to listen for client connections:
     int listenfd;
     if ((listenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         fprintf(stderr, "Error: %s\n", strerror(errno));
@@ -34,11 +48,12 @@ int main() {
         fprintf(stderr, "Error: %s\n", strerror(errno));
         exit(1);
     }
-
     if (listen(listenfd, BACKLOG) == -1) {
         fprintf(stderr, "Error: listen. %s", strerror(errno));
         exit(1);
     }
+
+    //Run a loop that continuously listens for client connections
     int connectfd;
     unsigned int length = sizeof(struct sockaddr_in);
     struct sockaddr_in clientAddr;
@@ -49,11 +64,12 @@ int main() {
             fprintf(stderr, "Error: %s\n", strerror(errno));
             exit(1);
         }
+
+        //After a client connects, fork a child process and read input from the client.
         if(fork()){
             close(connectfd);
             continue;
         }
-
         hostEntry = getnameinfo((struct sockaddr *) &clientAddr, sizeof(clientAddr), hostName, sizeof(hostName), NULL, 0, NI_NUMERICSERV);
         if (hostEntry != 0) {
             fprintf(stderr, "Error: %s\n", gai_strerror(hostEntry));
@@ -250,6 +266,15 @@ int main() {
 
 }
 
+/**
+ * This function establishes another socket connection with the client. This socket connection is called the data connection,
+ * which is used to transfer file data between the client and server. The data connection is distinct from the control connection.
+ * @param connectfd
+ * - The control connection socket that allows the server to write error messages to the client.
+ * @return
+ * - An integer representing the file descriptor for the newly created data connection socket.
+ * - OR it returns -1 for a recoverable error
+ */
 int createServerDataConnection(int connectfd) {
     int socketfd;
     char response[BUF_SIZE];
@@ -280,6 +305,15 @@ int createServerDataConnection(int connectfd) {
     return socketfd;
 }
 
+/**
+ * This function changes the directory of the server to the indicated path from the client.
+ * @param path
+ * - An input from the client, indicating the directory to move into.
+ * @param connectfd
+ * - The control connection in order to send an error message to the client, if needed.
+ * @return
+ * - Returns 0 for success, -1 for a recoverable error, or -2 for a nonrecoverable fatal error.
+ */
 int changeServerDirectory(char* path, int connectfd) {
     char response[BUF_SIZE];
     if (access(path, X_OK) == -1) {
@@ -322,8 +356,24 @@ int changeServerDirectory(char* path, int connectfd) {
     return 0;
 }
 
+/**
+ * Lists the server contents using ls and sends output to the client over the data connection:
+ * 1. Forks a child process in order to eventually execlp ls.
+ * 2. Within the child process:
+ *      - Uses dup2 to redirect STDOUT to the data connection.
+ *      - Uses execlp to execute ls, which sends the output to the client over the data connection.
+ *
+ * @param connectfd
+ * - The control connection socket. Used to send messages to the client.
+ * @param dataConnectFD
+ * - The data connection socket. The output of ls is written to the data connection (by using dup2 to redirect STDOUT).
+ * @return
+ * - Returns 0 for success, or -2 for a nonrecoverable fatal error
+ */
 int listServerContents(int connectfd, int dataConnectFD) {
     char response[BUF_SIZE];
+
+    //Fork a child process in order to eventually execlp ls.
     pid_t pid = fork();
     if (pid == -1) {
         int err = errno;
@@ -335,6 +385,10 @@ int listServerContents(int connectfd, int dataConnectFD) {
         }
         return -2;
     }
+
+    /*  Within the child process:
+          - Use dup2 to redirect STDOUT to the data connection.
+          - Use execlp to execute ls, which sends the output to the client over the data connection. */
     if (pid == 0) {
         dup2(dataConnectFD, STDOUT_FILENO);
         execlp("ls", "ls", "-l", "-a", NULL);
@@ -371,7 +425,21 @@ int listServerContents(int connectfd, int dataConnectFD) {
     return 0;
 }
 
+/**
+ * Sends a local file's contents to the client:
+ * 1. Reads a path from the client using the control connection, 'connectfd', and checks to make sure that it points to
+ *    a readable regular file.
+ * 2. Reads from the file using open() and read() and sends the contents to the client over the data connection.
+ *
+ * @param connectfd
+ * - The control connection used to send and receive messages with the client
+ * @param dataConnectFD
+ * - The data connection used to send the file contents to the client.
+ * @return
+ * - Returns 0 for success,
+ */
 int getFile_Server(int connectfd, int dataConnectFD) {
+    //Read a path from the client
     char path[BUF_SIZE];
     char response[BUF_SIZE];
     ssize_t n;
@@ -386,6 +454,8 @@ int getFile_Server(int connectfd, int dataConnectFD) {
         return -2;
     }
     path[n-1] = '\0';
+
+    //Check to make sure that the path points to a readable regular file.
     if (access(path, F_OK) == 0) {
         struct stat input, *s = &input;
         if (lstat(path, s) == -1) {
@@ -429,6 +499,7 @@ int getFile_Server(int connectfd, int dataConnectFD) {
         return -1;
     }
 
+    //Read from the file using open() and read() and send the content to the client over the data connection.
     int fd = open(path, O_RDONLY);
     char buffer[BUF_SIZE];
     while((n = read(fd, buffer, BUF_SIZE)) > 0) {
@@ -456,7 +527,23 @@ int getFile_Server(int connectfd, int dataConnectFD) {
     return 0;
 }
 
+/**
+ * Writes a file to the local directory:
+ * 1. Reads in a path from the client using the control connection. The function will use the last component of the path
+ *    for the file name. The path preceding the file name is ignored.
+ * 2. Parse the path to retrieve the file name.
+ * 3. Make sure that the file does not already exist.
+ * 4. Creates a new file and writes to it the contents in the data connection.
+ *
+ * @param connectfd
+ * - The control connection used to send and receive messages with the client.
+ * @param dataConnectFD
+ * - The data connection used to read contents from the client to write to the new file.
+ * @return
+ * - Returns 0 for success, -1 for a recoverable error, or -2 for a nonrecoverable fatal error.
+ */
 int putFile_Server(int connectfd, int dataConnectFD) {
+    //Read in a path from the client using the control connection.
     char path[BUF_SIZE];
     char response[BUF_SIZE];
     ssize_t n;
@@ -471,9 +558,13 @@ int putFile_Server(int connectfd, int dataConnectFD) {
         return -2;
     }
     path[n-1] = '\0';
+
+    //Parse the path to retrieve the file name.
     char pathCopy[strlen(path)+1];
     strcpy(pathCopy, path);
     char* fileName = basename(pathCopy);
+
+    //Make sure that the file does not already exist.
     if (access(fileName, F_OK) == 0) {
         sprintf(response, "EFile already exists.\n");
         if (write(connectfd, response, strlen(response)) == -1) {
@@ -482,6 +573,8 @@ int putFile_Server(int connectfd, int dataConnectFD) {
         }
         return -1;
     }
+
+    //Create a new file and write to it the contents in the data connection.
     int fd = open(fileName, O_WRONLY | O_CREAT, 0644);
     char buffer[BUF_SIZE];
     write(connectfd, "A\n", 2);

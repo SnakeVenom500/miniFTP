@@ -1,9 +1,11 @@
+//Server Functions:
 int createServerDataConnection(int connectfd);
 int changeServerDirectory(char* path, int connectfd);
 int listServerContents(int connectfd, int dataConnectFD);
 int getFile_Server(int connectfd, int dataConnectFD);
 int putFile_Server(int connectfd, int dataConnectFD);
 
+//Client Functions:
 void startCommandLine(int socketfd, char* address);
 int createSocketConnection(char* portNumber, char* address);
 int createClientDataConnection(int socketfd, char* address);
