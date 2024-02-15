@@ -1,11 +1,12 @@
 # Miniature File-Transfer-Protocol System
+*For Unix Systems Only*
 
 ## Setup
 1. Download the files from the git repository
-2. Open a command prompt and type 'make'
+2. Open a termional session and type 'make'
 3. (Optional) Move the server executable to a different directory than the client executable.
-4. Open a new command prompt window and navigate to the server directory. Enter './server' in the command prompt.
-5. In the initial command prompt window, enter './client localhost'. You should get a prompt to type in commands, and on the server window it should indicate a connection. Use the commands as defined below.
+4. Open a new terminal window and navigate to the server directory. Run the server executable by entering './server'.
+5. In the initial terminal window, enter './client localhost'. You should get a prompt to type in commands, and on the server window it should indicate a connection. Use the commands as defined below.
 
 ## User commands
 The user commands are:
